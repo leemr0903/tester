@@ -1,0 +1,184 @@
+---
+title: "UbisoftCase_LEE_MADDIE"
+author: "Maddie Lee"
+date: "August 31, 2024"
+output: 
+  html_document:
+    number_sections: no
+    toc: yes
+editor_options: 
+  chunk_output_type: inline
+---
+
+## read and explore data
+```{r message=FALSE}
+options(rgl.useNULL = TRUE)
+library(rminer)
+library(rmarkdown)
+library(tidyverse) 
+library(dplyr)
+```
+
+```{r load and explore data}
+#set working directory to downloads
+cloud_wd <- "/Users/madelinelee/Downloads"
+setwd(cloud_wd)
+
+ubisoft <- read.csv(file = "ubisoft_historical.csv", stringsAsFactors = FALSE)
+
+#factor day of week variable
+ubisoft$Day_of_Week <- as.factor(ubisoft$Day_of_Week)
+
+str(ubisoft)
+
+head(ubisoft)
+
+```
+
+
+## Task 1: Unit of Analysis
+
+What is the unit of analysis for the proposed A/B test? Explain. \
+
+* The unit of analysis is the individual customer visit to the Buy Now page for the game For Honor. This is the page were we will apply the intervention (placement of the order now step).
+
+## Task 2: Baseline Conversion Rate
+
+What is the baseline conversion rate for the For Honor game in the historical data?
+
+```{r Task 2 baseline conversion rate}
+# total of conversions
+conversions <- sum(ubisoft$Conversions)
+
+# total number of visitors
+visitors <- sum(ubisoft$Visitors)
+
+#conversion rate (rounded to 2 decimal places)
+conversion_rate <- round(conversions/visitors, 2)
+conversion_rate
+```
+* The baseline conversion rate for the For Honor game from the historical data is .05 or 5%.  
+
+## Task 3: Required Sample Size
+
+What is the required sample size in each group in order for the test to detect the specified MEI of 1% in conversions, assuming alpha of .05 and power of .8 in a one-tailed (directional) test? \
+
+```{r Task 3 find sample size}
+power.prop.test(p1 = .05, 
+                p2 = .06, 
+                sig.level = .05, 
+                power = .8, 
+                alternative = "one.sided")
+```
+* Assuming baseline conversion of .05 that we found above for p1 and add the MEI (effect size) of .01 to get p2 = .06.
+
+* Total subjects needed is 6426 * 2 = 12852 subjects
+
+## Task 4: Study Duration
+
+Given the study parameters from the previous question—MEI, alpha and power—and the visitor counts in the historical data, how long will the test need to run? Discuss the assumptions you are making in estimating the test duration.
+
+```{r Task 4 test duration}
+#number of total days
+total_days <- ubisoft %>%
+  summarise(count = n())
+
+#average number of visitors per day
+avg_visit_day <- visitors / total_days
+
+#test duration = total subjects / average number of visitors per day
+test_duration = 12852 / avg_visit_day
+
+```
+
+* We find the average number of visitors per day by taking the number of total visitors and total days and get 530 visitors. From this we divide the the required sample size we found in task 3 by the average number of visitors to get the study duration. We round the duration up to the nearest number of days. \
+
+* test duration = 12852 / 530 = 24.25 -> 25 days 
+
+## Task 5: Adjusting for False Negatives
+
+In A/B testing false negatives can be more detrimental to a company than false positives. Primarily, they prevent the recognition and implementation of beneficial changes, resulting in missed opportunities, and, in the long run, competitive disadvantage. Recalculate sample size and study duration with this in mind, using different settings for alpha and power. Explain your choices.
+
+```{r Task 5 change alpha and power to lower false negatives}
+power.prop.test(p1 = .05, 
+                p2 = .06, 
+                sig.level = .025, 
+                power = .95, 
+                alternative = "one.sided")
+
+```
+* To decrease the the number of false negatives (Type II errors), I increased the overall power to .95 which increased n to 13505 * 2 = 27010. \ 
+
+* After finding the new sample size we can find the study duration by dividing our new sample size by the average number of visitors by day. We get 27010 / 530 = 50.96 -> 60 days for study duration. \
+
+
+
+## Task 6: Simulate Visitor Level Data
+
+Simulate visitor level data for the test, based on numbers from the historical data, and given the MEI and the test duration you calculated in Q4. 
+
+```{r data simulation}
+set.seed(100)
+
+# constants
+test_duration_days <- 25
+avg_visitors_per_day <- 530
+total_visitors <- test_duration_days * avg_visitors_per_day
+conversion_rate_control <- .05  
+conversion_rate_test <- .06 # control rate plus MEI of .01
+
+# Initialize a data frame with rows equal to # of total visitors
+visitor_data <- data.frame(id = 1:total_visitors)
+
+# Randomly assign each customer to either the control or test group
+# Then simulate conversions based on expected test or control rates
+visitor_data <- visitor_data |>
+  mutate(group = sample(c("control", "test"), n(), prob = c(.5,.5), replace = TRUE),
+    conversion_prob = ifelse(group == "control", conversion_rate_control, conversion_rate_test),
+    conversion = rbinom(n(), 1, conversion_prob)) |>
+  select(-conversion_prob)
+
+
+```
+
+```{r check simulated data}
+head(visitor_data)
+
+visitor_data |>
+  group_by(group) |>
+  summarize(rate = mean(conversion)) 
+```
+```{r analyze simulated data}
+# We can use a table as the input to prop.test()
+# This is a 2 x 2 matrix giving counts of successes and failures
+table(visitor_data$group, visitor_data$conversion)
+
+prop.test(table(visitor_data$group, visitor_data$conversion), alternative = "greater")
+
+```
+* Using our simulated data created from calculations in the historical data set we have a p-val of .0036 and can reject the null hypothesis. This suggests that the sample size calculation is likely to produce enough observations to detect the MEI with statistical significance. 
+
+## Task 7: Experiement Proposal
+
+__Background and Objectives:__ \
+Ubisoft Entertainment wants to optimize the Buy Now page for its new game _For Honor_ by simplifying the purchase process. Currently users must go through several steps before selecting the order button. The objective of this experiment is to test whether the redesigned purchase process (Order Now step has been moved to the top of the page, in the left column alongside the edition and console selection.) of the page will increase the number of game purchases (conversions).
+
+__Null and Alternative Hypothesis:__ \
+Null Hypothesis: The new purchase process does not result in an increase in overall game purchases (< 1% conversion rate increase)
+
+Alternative Hypothesis: The new purchase process does result in an increase in overall game purchases (>= 1% conversion rate increase)
+
+__The Test Metric:__ \
+We will look at conversion rates (visits that resulted in a purchase / overall visits) for the current purchase process (control) to the new redesigned purchase process. 
+
+__Experimental Design:__ \
+We will randomly assign each visitor that visits the page (50/50 allocation) to either the old purchase process or new purchase process. We will then collect information on whether the visitor purchases the game or not (binary 1/0 success failure)
+
+__Sample Size and Experiment Duration:__ \
+Sample Size: Using the calculations found above with a 5% historical conversion rate, MEI of 1%, alpha of .05, and power of .8, the required sample size for each purchase process is 6426. Total visitors needed is 6426*2 = 12852. 
+
+Experiment Duration: Using the historical data, we found the webpage has an average of approximately 530 visitors per day. Taking our sample size and dividing it by the average number of visitors, we estimate the experiment duration to be about 25 days (rounded up to the nearest whole day.) 
+
+__Analysis Plan:__ \
+We will use a one sided proportion hypothesis test to compare the conversion rate for the two purchase processes using an alpha of .05 and a baseline conversion difference (MEI) of 1%. If the p-value collected from the test is < .05, we will reject the null hypothesis and assume that the new purchase process significantly increases overall game purchase conversions. 
+
