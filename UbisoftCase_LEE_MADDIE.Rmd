@@ -182,3 +182,5 @@ Experiment Duration: Using the historical data, we found the webpage has an aver
 __Analysis Plan:__ \
 We will use a one sided proportion hypothesis test to compare the conversion rate for the two purchase processes using an alpha of .05 and a baseline conversion difference (MEI) of 1%. If the p-value collected from the test is < .05, we will reject the null hypothesis and assume that the new purchase process significantly increases overall game purchase conversions. 
 
+
+##adding a change for msba_assignment test
